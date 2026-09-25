@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
   <title>Cube Roller</title>
   <link rel="stylesheet" href="style.css" />
-  <script src="https://acubemy.com/plugin-sdk/v1.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/acubemy/plugin-sdk@1/v1.js"></script>
   <script type="importmap">
     {
       "imports": {
@@ -24,6 +24,13 @@
     <button id="respawn" class="pill">Respawn</button>
   </div>
   <div id="help" class="hud"></div>
+  <div id="goal" class="hud" hidden>
+    <div>
+      <b>You reached the top!</b>
+      <br /><span id="goal-time"></span>
+      <br /><button id="goal-button" class="pill">Play again</button>
+    </div>
+  </div>
   <div id="calib" class="hud" hidden>
     <div>
       Hold your cube with <b>white on top</b> and <b>green facing you</b>, then calibrate.

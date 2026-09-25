@@ -3,7 +3,7 @@
   "id": "cube-roller",
   "name": "Cube Roller",
   "author": "acubemy",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A physics game in a blocky world: roll your cube in your hands to roll it in the world, or turn its layers to push off the ground.",
   "entry": "index.html",
   "permissions": ["moves", "gyro", "state"]

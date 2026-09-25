@@ -28,9 +28,25 @@ const TURN_TIMEOUT = 0.6;
 const CUBE_ROUNDING = 0.08;
 const CUBE_FRICTION = 1.0;
 const GRIP_FRICTION = 1.0;
-// Steps up to ~1.3 can be rolled over; 1.5 is too high for any gyro roll but
-// can be hopped with fast R L' turns (layer corners lever the cube up).
+// Steps up to ~1.3 can be rolled over; higher ones need fast R L' turns (layer
+// corners lever the cube up) or a very fast roll.
 const CLIMB_STEP = 1.5;
+// Goal tower ahead of spawn: two rollable stone steps, then 1.6 high blue steps.
+// In simulation R L' hops get up in 7–9 s; rolling alone fails below ~8 rad/s.
+const TOWER_X = [0, 1, 2];
+const TOWER_CLIMB = { height: 1.6, depth: 1, count: 2 };
+const TOWER_STEPS = [
+  { tz: -5, h: 1 },
+  { tz: -6, h: 2 },
+];
+for (let i = 0; i < TOWER_CLIMB.count; i++) {
+  for (let d = 0; d < TOWER_CLIMB.depth; d++) {
+    TOWER_STEPS.push({ tz: -7 - i * TOWER_CLIMB.depth - d, h: 2 + TOWER_CLIMB.height * (i + 1), level: i });
+  }
+}
+const TOWER_TOP_TZ = -7 - TOWER_CLIMB.count * TOWER_CLIMB.depth;
+const TOWER_TOP = { tz: [TOWER_TOP_TZ, TOWER_TOP_TZ - 1, TOWER_TOP_TZ - 2], h: 2 + TOWER_CLIMB.height * TOWER_CLIMB.count };
+const GOAL = { x: 1.5 * BLOCK, y: TOWER_TOP.h, z: (TOWER_TOP_TZ - 0.5) * BLOCK };
 
 // --- Renderer / scene ------------------------------------------------------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -329,6 +345,7 @@ const WALL_MATS = [0xff6b6b, 0xf06595, 0x9775fa, 0x63e6be, 0xff922b, 0x868e96].m
   (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.75 }),
 );
 const CLIMB_MATS = [0x5c7cfa, 0x4c6ef5].map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6 }));
+const TOWER_MAT = new THREE.MeshStandardMaterial({ color: 0xf1e3c2, roughness: 0.8 });
 
 function addBlock(chunk, tx, tz, h, mat) {
   const x = (tx + 0.5) * BLOCK, z = (tz + 0.5) * BLOCK;
@@ -368,12 +385,29 @@ function addClimbStairs(chunk, tx, tz, dirX, dirZ, steps, width) {
 const chunks = new Map();
 const collected = new Set();
 const nearSpawn = (tx, tz) => Math.abs(tx) < 4 && Math.abs(tz) < 4;
+const towerArea = (tx, tz) => tx >= -1 && tx <= 3 && tz >= TOWER_TOP_TZ - 3 && tz <= -4;
+
+function addGoalTower(chunk) {
+  for (const step of TOWER_STEPS) {
+    for (const tx of TOWER_X) addBlock(chunk, tx, step.tz, step.h, step.level === undefined ? STEP_MATS[0] : CLIMB_MATS[step.level % 2]);
+  }
+  for (const tz of TOWER_TOP.tz) for (const tx of TOWER_X) addBlock(chunk, tx, tz, TOWER_TOP.h, TOWER_MAT);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4, 12), new THREE.MeshStandardMaterial({ color: 0xeeeeee }));
+  pole.position.set(GOAL.x, GOAL.y + 2, GOAL.z - BLOCK * 0.4);
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1), new THREE.MeshStandardMaterial({ color: 0xff8a00, side: THREE.DoubleSide }));
+  flag.position.set(GOAL.x + 0.8, GOAL.y + 3.4, GOAL.z - BLOCK * 0.4);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.12, 12, 40), new THREE.MeshStandardMaterial({ color: 0xffc400, emissive: 0x805a00 }));
+  ring.rotation.x = Math.PI / 2;
+  ring.position.set(GOAL.x, GOAL.y + 0.05, GOAL.z);
+  [pole, flag, ring].forEach((m) => { m.castShadow = true; chunk.group.add(m); });
+}
 
 function buildChunk(cx, cz) {
   const rand = mulberry32((cx * 73856093) ^ (cz * 19349663) ^ 0x5bd1e995);
   const chunk = { group: new THREE.Group(), colliders: [], coins: [], heights: new Map() };
   const tx0 = cx * CHUNK_TILES, tz0 = cz * CHUNK_TILES;
-  const free = (x, z) => !nearSpawn(x, z) && !chunk.heights.has(`${x},${z}`);
+  const free = (x, z) => !nearSpawn(x, z) && !towerArea(x, z) && !chunk.heights.has(`${x},${z}`);
+  if (cx === 0 && cz === -1) addGoalTower(chunk);
 
   // Stone terraces of half-block steps: grippy, so rolling tips you up.
   for (let i = 0, n = 1 + Math.floor(rand() * 3); i < n; i++) {
@@ -411,7 +445,7 @@ function buildChunk(cx, cz) {
   // Loose coins on the ground and low terraces.
   for (let i = 0; i < 6; i++) {
     const tx = tx0 + Math.floor(rand() * CHUNK_TILES), tz = tz0 + Math.floor(rand() * CHUNK_TILES);
-    if (!nearSpawn(tx, tz) && (chunk.heights.get(`${tx},${tz}`) ?? 0) <= BLOCK / 2) addCoin(chunk, tx, tz);
+    if (!nearSpawn(tx, tz) && !towerArea(tx, tz) && (chunk.heights.get(`${tx},${tz}`) ?? 0) <= BLOCK / 2) addCoin(chunk, tx, tz);
   }
   scene.add(chunk.group);
   return chunk;
@@ -444,6 +478,8 @@ let calibrated = false;
 let cameraYaw = 0;
 let cameraYawTarget = 0;
 let coins = 0;
+let startedAt = performance.now();
+let finished = false;
 const keys = new Set();
 const hasGyro = () => performance.now() - lastGyroAt < 1000;
 
@@ -517,6 +553,8 @@ const hud = {
   calibrateOverlay: document.getElementById("calib"),
   respawn: document.getElementById("respawn"),
   help: document.getElementById("help"),
+  goal: document.getElementById("goal"),
+  goalTime: document.getElementById("goal-time"),
 };
 function renderScore() {
   hud.score.firstChild.nodeValue = String(coins);
@@ -527,17 +565,31 @@ function renderHelp() {
   hud.calibrate.hidden = !hasGyro();
   hud.calibrateOverlay.hidden = !hasGyro() || calibrated;
   hud.help.textContent = hasGyro()
-    ? "The virtual cube follows your cube · roll it to move · hop up blue stairs with fast R L' turns"
+    ? "Reach the flag on the tower · roll your cube to move · hop up blue stairs with fast R L' turns"
     : device.connected
       ? "No gyro: turn layers to push the cube around · arrows spin it"
       : "Arrows spin the cube · keys U R F D L B turn layers · Q/E rotate camera";
 }
 function respawn() {
   if (split) mergeCube();
-  cubeBody.setTranslation({ x: BLOCK / 2, y: BLOCK / 2 + 0.05, z: BLOCK / 2 }, true);
+  cubeBody.setTranslation({ x: GOAL.x, y: BLOCK / 2 + 0.05, z: BLOCK / 2 }, true);
   cubeBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
   cubeBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
   cubeBody.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
+}
+function restart() {
+  respawn();
+  startedAt = performance.now();
+  finished = false;
+  hud.goal.hidden = true;
+}
+function checkGoal(center, now) {
+  if (finished) return;
+  const onPlatform = Math.abs(center.x - GOAL.x) < BLOCK * 1.5 && Math.abs(center.z - GOAL.z) < BLOCK * 1.5;
+  if (center.y < GOAL.y || !onPlatform) return;
+  finished = true;
+  hud.goalTime.textContent = `${((now - startedAt) / 1000).toFixed(1)} s · ${coins} coins`;
+  hud.goal.hidden = false;
 }
 function calibrate() {
   acubemy.calibrateGyro();
@@ -547,6 +599,7 @@ function calibrate() {
 hud.calibrate.addEventListener("click", calibrate);
 document.getElementById("calib-button").addEventListener("click", calibrate);
 hud.respawn.addEventListener("click", respawn);
+document.getElementById("goal-button").addEventListener("click", restart);
 acubemy.onDeviceChange(renderHelp);
 
 // --- Loop -------------------------------------------------------------------
@@ -607,6 +660,7 @@ renderer.setAnimationLoop((now) => {
   if (avatar.position.y < -20) respawn();
   syncAvatar();
   collectCoins(avatar.position, now);
+  checkGoal(avatar.position, now);
   updateChunks(avatar.position.x, avatar.position.z);
   renderFrame(dt);
   renderer.render(scene, camera);
