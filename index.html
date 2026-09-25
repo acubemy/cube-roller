@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>Cube Roller</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://acubemy.com/plugin-sdk/v1.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js",
+        "rapier": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.19.3/rapier.mjs"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="loading" class="hud">Loading physics…</div>
+  <div id="score" class="hud">0<small>coins</small></div>
+  <div id="status" class="hud">
+    <span id="device" class="pill">No cube</span>
+    <button id="calibrate" class="pill" hidden>Calibrate gyro</button>
+    <button id="respawn" class="pill">Respawn</button>
+  </div>
+  <div id="help" class="hud"></div>
+  <div id="calib" class="hud" hidden>
+    <div>
+      Hold your cube with <b>white on top</b> and <b>green facing you</b>, then calibrate.
+      The virtual cube will follow its orientation from then on.
+      <br /><button id="calib-button" class="pill">Calibrate</button>
+    </div>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
